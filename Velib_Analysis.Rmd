@@ -1,50 +1,149 @@
 ---
 title: "Velib_Notebook"
-output: html_notebook
+output:
+  html_document:
+    df_print: paged
+editor_options:
+  markdown:
+    wrap: 72
 ---
 
-# Why getting data of citybikes ?
-Public transportations have made a huge progress these last years especially when it comes to green mobility.Indeed, Public Leasing Bikes are flourishing in urban areas for offering a fast and environmental friendly way to travel for people.As the demand increases while public powers are putting efforts in developing bikelanes instead of roads. However if it is growing too fast , city centers could face local shortages if every city area is not well equipped with enough citybikes. 
+```{r, echo= FALSE, message=FALSE, warning=FALSE}
+# setup 
 
-This data analysis project is conducted over an hourly updated dataset of Paris citybikes called Velib. That is why in this exploratory analysis shortages per areas (18 totally in Paris) will be showcased for drawing some recommendations on further locations to build. 
+#import the libraries
 
-## Dataset Description 
-Paris has more than 1400 stations and more than 400km2 covered with mechanical and ebikes. Data is updated in real time what allows to see the evolution of service in terms of available bikes for each station. 
+my_packages <- c("readr",
+                 "tidyr",
+                 "tibble",
+                 "dplyr",
+                 "mice",
+                 "stringr",
+                 "lubridate",
+                 "ggplot2",
+                 "rvest",
+                 "RSelenium",
+                 "netstat",
+                 "data.table",
+                 "httr",
+                 "jsonlite",
+                 "scales",
+                 "ggrepel",
+                 "RSQLite")
 
-Here are listed below the variables of this dataset : 
-1. stationCode : chr 
-2. station_id : num
-3.num_bikes_available: int  (Number of bikes available)
-4. mechanical : int  (Number of mechanicald Bikes available)
-5. ebike : int  (Number of Ebikes available)
-6. numBikesAvailable : int  (Total Number of bikes available)
-7. num_docks_available: int  (Number of docks available)
-8. numDocksAvailable : int  
-9. is_installed : int (Wether if the station is installed or not 1-yes 0-no)
-10. is_returning : int  (1- bike is returned 0-bike is not)
-11. is_renting : int (1-bike is rented 0-bike is not)
-12. last_reported : int (timestamp when the situation was reported)
-13. name : chr (name of the station)
-14. lat : num (latitude of the station)
-15. lon : num (longitude of the station)
-16. capacity : num (total capacity of the station)
-17. rental_methods : (NA refers to subscription CREDIT CARD to one time payment)
+#check if packages are not installed internally
 
-Quick explaination of the dataset : the above aggregated data is directly obtained by GET request from public APIs.Each time the API is called the sent response is capturing the situation of bike trafic in Paris. As bike come and go the number of bikes available and dock available varies depending on the number of bikes actually rented during two time periods. One line equals to one transaction when each time a bike is rented.
+not_installed <- my_packages[!(my_packages %in% installed.packages()[ , "Package"])]    # Extract not installed packages
+if(length(not_installed)) install.packages(not_installed)                               # Install not installed packages
 
-For this analysis we will only take in account the transactions made in year 2022.
 
-```{r}
-# connect to SQLite Database
-conn <- dbConnect(RSQLite::SQLite(), "Velib_DB.db")
+#read the libraries all in once 
 
-velib <- dbGetQuery(conn, 'SELECT *
-                          FROM Velib_Data') %>%
-  tibble()
+lapply(my_packages, require, character.only = TRUE)
+```
 
-# removing NA values
-velib <- velib %>%
-  na.omit()
+![](images/800px-Ve%CC%81lib-Me%CC%81tropole-Logo-01.png){width="726"}
+
+# Executive Summary
+
+1.  **Presentation of the Project Notebook**
+
+    **1.1 Dataset Description**
+
+    **1.2 Dataset settings Adjusments**
+
+2.  **Descriptive Analysis**
+
+    **2.1 Overview**
+
+    **2.2 How many bikes are rented on a daily basis ?**
+
+    **2.3 What is the most common Rental Method ?**
+
+3.  **Local Analysis**
+
+    **3.1 What is the variation of bikes available within a day ?**
+
+    **3.2 How many transactions are made in a day ?**
+
+    **3.3 How much sales regarding these transactions ?**
+
+## 1. Presentation of the Project Notebook
+
+### 1.1 Dataset Description
+
+Public transportation have made a huge progress these last years
+especially when it comes to green mobility.Indeed, public city bikes are
+flourishing in urban areas for offering a fast and environmental
+friendly way to travel for people. As the demand increases while public
+powers are putting efforts in developing bike lanes instead of roads.
+However if it is growing too fast , city centers could face local
+shortages if every city area is not well equipped with enough city
+bikes.
+
+This data analysis project is conducted over an hourly updated dataset
+of Paris citybikes called Velib. That is why in this exploratory
+analysis shortages per areas (18 totally in Paris) will be showcased for
+drawing some recommendations on further locations to build.
+
+Paris has more than 1400 stations and more than 400km2 covered with
+mechanical and ebikes. Data is updated in real time what allows to see
+the evolution of service in terms of available bikes for each station.
+
+Here are listed below the variables of this dataset :
+
+1.  **stationCode : chr**
+
+2.  **station_id : num**
+
+3.  **num_bikes_available: int (Number of bikes available)**
+
+4.  **mechanical : int (Number of mechanicald Bikes available)**
+
+5.  **ebike : int (Number of Ebikes available)**
+
+6.  **numBikesAvailable : int (Total Number of bikes available)**
+
+7.  **num_docks_available: int (Number of docks available)**
+
+8.  **numDocksAvailable : int**
+
+9.  **is_installed : int (Wether if the station is installed or not
+    1-yes 0-no)**
+
+10. **is_returning : int (1- bike is returned 0-bike is not)**
+
+11. **is_renting : int (1-bike is rented 0-bike is not)**
+
+12. **last_reported : int (timestamp when the situation was reported)**
+
+13. **name : chr (name of the station)**
+
+14. **lat : num (latitude of the station)**
+
+15. **lon : num (longitude of the station)**
+
+16. **capacity : num (total capacity of the station)**
+
+17. **rental_methods : (NA refers to subscription CREDIT CARD to one
+    time payment)**
+
+Quick explanation of the dataset : the above aggregated data is directly
+obtained by GET request from public APIs.Each time the API is called the
+sent response is capturing the situation of bike trafic in Paris. As
+bike come and go the number of bikes available and dock available varies
+depending on the number of bikes actually rented during two time
+periods. One line equals to one transaction when each time a bike is
+rented.
+
+For this analysis we will only take in account the transactions made in
+year 2022.
+
+### 1.2 Dataset settings adjustments
+
+```{r, echo = FALSE}
+# read from local csv 
+velib <- read.csv(file = "/Users/guilhemjolly/velib.csv")
 
 #as station id and station code are numerics let's convert it in strings
 velib$station_id  <- as.character(velib$station_id)
@@ -52,45 +151,131 @@ velib$stationCode <- as.character(velib$station_id)
 
 #as the same date has to be converted from an int to a date format
 velib$last_reported <- as.POSIXct(velib$last_reported, origin="1970-01-01")
-
-head(velib,5)
-
 ```
-As you might have noticed the oldest transaction reported were in 2018 ? Obviously we can formulate some hypothesis about this. Every user is not peculiar when it comes to ride or park a bike. And some have seen their beloved ones ending in the waters of the Seine or broken by accident.
 
-Life is though for citybikes :), but numerous ones are still remaining and are used everyday without being seriously damaged. That is why remaining operational bikes will only be taken in account in this study. 
+## 2. Descriptive Analysis
 
-```{r}
+### 2.1 Overview
+
+A good analysis starts with removing outliers. As a matter of fact do
+you have noticed that some the old transactions were reported in 2018 ?
+Obviously we can formulate some hypothesis about this. Every user is not
+peculiar when it comes to ride or park a bike. And some have seen their
+beloved ones ending in the waters of the Seine or broken by accident. 😢
+
+Life is though for citybikes, but numerous ones are still remaining and
+are used everyday without being seriously damaged. That is why remaining
+operational bikes will only be taken in account in this study.
+
+However feel free to play with the transactions that were reported
+before this year !
+
+```{r, echo = FALSE}
 #filter by year 2022
 velib <- velib %>%
   filter(as.Date(velib$last_reported) >= "2022-01-01")
+
+head(velib,5)
 ```
 
-### Overview
+There is no precise variable to estimate the number of bikes like a
+unique id for each bike actually in function.Nevertheless, the total
+number of bikes can be estimated by the number of docks assuming that
+there are as many docks as bikes available and this number of docks
+remains stable over time.
 
-```{r}
+```{r, echo = FALSE}
 station <- dbGetQuery(conn, 'SELECT COUNT(DISTINCT station_id) as count_station
                                FROM Velib_Data')
 
-total_bikes <- dbGetQuery(conn,'SELECT DISTINCT station_id,
-                      SUM(num_bikes_available) as total_count,
-                      SUM(mechanical) as count_mechanical,
-                      SUM(ebike) as ebike_count
-                      FROM Velib_Data') %>%
-                      .[,-1]
-station
-total_bikes
+docks <- velib %>%
+  distinct(station_id, .keep_all = TRUE) %>%
+  summarise(total_count = sum(num_docks_available))
+
+total_bikes_available <- velib %>%
+  group_by(export_date) %>%
+  distinct(station_id, .keep_all = TRUE) %>%
+  summarise(total_mechanical = sum(mechanical),
+            total_ebike = sum(ebike))
+
+#count the number of distinct stations in each date grouping
+nb_stations <- velib %>% 
+  select(station_id, export_date) %>% 
+  group_by(station_id, export_date) %>%
+  summarise(total = n(),
+            .groups = 'drop')
+
+docks
+total_bikes_available
+
 ```
-The 1452 stations are counting 423338 bikes with 265304 mechanical and 158084 ebikes over the fleet. Mechanical bikes are representing more than 2/3 of the bikes population in Paris !
+
+After filtering by date the count for each day analysed the count of
+stations is successively 1444,1452 and 1452. However this might be to a
+lack of data sent for one station. Let's assume that the number of
+stations count is stable.
+
+The 1452 stations are counting bikes with mechanical and e bikes over
+the fleet. **Mechanical bikes are representing more than 2/3 of the
+bikes population in Paris !**
+
+```{r, echo = FALSE}
+# install customization libraries
+library(viridis)
+library(hrbrthemes)
+
+#proportion of mechnanical and ebikes over the fleet
+biketype_plot2 <- ggplot(total_bikes_available, aes(x = export_date, y = total_mechanical)) +
+geom_col()
+
+biketype_plot3 <- ggplot(total_bikes_available, aes(x = export_date, y = total_ebike)) +
+geom_col()
+
+biketype_plot2
+
+biketype_plot3
+```
+
+As we can see there the number of bikes available remains stable from
+day to day.
+
+However, as you might have noticed the number of bikes available equals
+the number of mechanical and e bikes lastly reported in the station. But
+it does not mean that every bike is fully operational. One way to
+challenge this KPI is to compare for every bike station how many bikes
+are rented for one day (ie counting the number of transaction lines) and
+the number of bikes available.
+
+### How many bikes are rented on a daily basis ?
+
+```{r}
+#create a new column for grouping the dates per hour and analyse the number of bikes rented during the day 8th December.
+rented <- velib %>%
+  filter(last_reported > as.POSIXct('2022-12-08 00:00:00')) %>%
+  group_by(Hour = floor_date(last_reported,"1 hour")) %>% 
+  mutate(rented_count = sum(is_renting))
+
+rented_plot <- ggplot(rented,aes(x = Hour, y = rented_count)) + 
+  geom_line() +
+  labs(title = "Count of rented bikes over time",
+       x = 'Date',
+       y  = 'Count of Rented bikes')
+
+rented_plot
+```
 
 ### What is the most common rental method ?
-Citybikes can be easily used with city transportation card with a significant discount on all subscription. So we might think that bikes are more rented by susbcription rather than with Credit Card which means that the user is unlocking the bike for a single ride. 
+
+City bikes can be easily used with city transportation card with a
+significant discount on all subscription. So we might think that bikes
+are more rented by subscription rather than with Credit Card which means
+that the user is unlocking the bike for a single ride.
 
 ```{r}
 
 payment <- dbGetQuery(conn, 'SELECT rental_methods, count(*) as subscription
                              FROM Velib_Data
-                             WHERE rental_methods == "NA"
+                             WHERE rental_methods IS NULL
                              UNION
                              SELECT rental_methods, count(*) as subscription
                              FROM Velib_Data
@@ -98,76 +283,174 @@ payment <- dbGetQuery(conn, 'SELECT rental_methods, count(*) as subscription
   
 payment
 ```
-```{r}
-# install customization libraries
-library(viridis)
-library(hrbrthemes)
 
+```{r, echo = FALSE}
 payment_plot <- ggplot(payment, aes(fill = rental_methods,x = rental_methods, y = subscription)) + 
 geom_col(position="stack", stat="identity") + 
 labs(title = "Payment method",
      x = "Rental Method",
-     y = "Number of rentals")
+     y = "Number of rentals") +
+  scale_color_brewer(palette = "Spectral") + 
+   theme_minimal()
 
 payment_plot
 
 ```
-Unlike what could be assumed the single ride payment is the most used rental method. In proportion it is more than 88% ! Numerous reasons can be given for explaining such gap but maybe locals are not using as many as citybikes as tourists, or they are not aware that a monthly subscription will cost as much as the same as a single ride.
 
-### How much sales ?
-Assuming this data, it could be great to see how much tunrover is doing Velib on single ride rentals. Nevertheless it is not possible to correctly know how much it is for subscriptions as different subscription methods are existing at different fees. 
+Unlike what could be assumed the single ride payment is the most used
+rental method. In proportion it is more than **88% !** Numerous reasons
+can be given for explaining such gap but maybe locals are not using as
+many as citybikes as tourists, or they are not aware that a monthly
+subscription will cost as much as the same as a single ride.
 
-In the following part of the study we will assume that payment with credit card will only be one time payment that don't exceed 45 min. Time when you get charged extra fee.
-
-A single ride is costing 3€ for a mechanical or an ebike. 
-
-```{r}
-turnover <- payment[1,] %>% #take only the first row 
-            mutate(turnover = subscription * 3) 
-
-#display the turnover for one day, create a new table with the date and the turnover
-turnover_over_date <- dbGetQuery(conn, 'SELECT rental_methods, count(*) as subscription, count(*)*3 as                                          turnover, export_date
-                                       FROM Velib_Data
-                                       WHERE rental_methods == "CREDITCARD"')
-
-
-          ```
-
-
-## Local Analysis 
+## Local Analysis
 
 ### What is the variation of bikes available within a day ?
-In order to analyse which stations are lacking citybikes, first step consists in seeing how many bikes are available within a day to analyse peak hours. As each line refers to one transaction let's create a table with all the transaction done within one day. 
+
+In order to analyse which stations are lacking city bikes, first step
+consists in seeing how many bikes are available within a day to analyse
+peak hours. As each line refers to one transaction let's create a table
+with all the transaction done within one day.
 
 ```{r}
+trafic <-  velib %>%
+  group_by(hour = format(
+    as.POSIXct(
+    floor_date(last_reported,"1 hour")),
+    format = '%H')) %>% 
+#for one station it could have several transactions per hour 
+    distinct(hour,station_id, .keep_all = T) %>% 
+  summarize(total_availability = sum(num_bikes_available)) %>%
+#removing the outliers from the hours not recorded during the night 
+  filter(hour > '09')
+
+trafic
+
+
+trafic_plot <- ggplot(trafic, aes(x = hour, y = total_availability)) +
+  geom_col()+
+  labs(title = 'Number of bikes available over time',
+       x = 'hour',
+       y = 'number of bikes') 
+
+trafic_plot
+```
+
+### Number of transactions within a day
+
+As the data frame append lines when a new transaction is reported, we
+would want to monitor the available number of bikes from one station to
+another but limit the number of points entered. For doing this, one way
+is to rank all stations per number of transactions and show this KPI.
+
+```{r}
+# counting the number of transactions per citybike stations  
+#as the calls were not made hour per hour regularly on one day get rid of the date to only have the hour. We assume here that the trafic does not vary from one day to another excepting week-ends. 
+
+transaction_count <- velib %>%
+  group_by(hour = format(
+    as.POSIXct(
+    floor_date(last_reported,"1 hour")),
+    format = '%H')) %>% 
+  filter(is_renting == 1) %>% 
+  count(station_id, wt = is_renting) %>%
+  summarise(total_transactions = sum(n))
+
+transaction_count
+
+transaction_count_plot <- ggplot(transaction_count, aes(x = hour, y = total_transactions)) +
+geom_col() + 
+labs (title = "Total transactions per hour",
+      x = "hour",
+      y = "count")
+
+transaction_count_plot
+```
+
+According the graph the number of transactions is peaking between 19:00
+and 20:00 at 12606. Considering the total amount of bikes available in
+the city that is to say the number of docks equals the number of bikes
+in available on station plus those rented is 29755, **more than 42% of
+bikes in the city are rented in this time frame !**
+
+### How much sales regarding these transactions ?
+
+Assuming this data, it could be great to see how much turnover is doing
+Velib' on single ride rentals. Nevertheless, it is not possible to
+correctly know how much it is for subscriptions as different
+subscription methods are existing at different fees.
+
+In the following part of the study we will assume that payment with
+credit card will only be one time payment that don't exceed 45 min (time
+when you get charged extra fee). For the need of the study we will
+timeframe the day in 3 parts : morning (from 00:00 AM to 12:00AM),
+afternoon (from 12:01 AM to 6:00PM) and evening (from 6:01 PM to 00:00
+AM).
+
+A single ride is costing 3€ for a mechanical or an ebike.
+
+```{r}
+#take the transaction count and filtering by rental_methods
+turnover_over_date <-  velib %>%
+  group_by(hour = format(
+    as.POSIXct(
+    floor_date(last_reported,"1 hour")),
+    format = '%H')) %>% 
+  
+ #filterig by is_renting otherwise the user is not debited of his ride 
+  filter(is_renting == 1,
+         rental_methods == "CREDITCARD") %>% 
+  count(station_id, wt = is_renting) %>%
+  summarise(turnover = sum(n)*3)
+
+
+turnover_morning <- turnover_over_date %>%
+  filter(hour < '12' & hour > '00') %>%
+  summarise(total = sum(turnover))
+
+turnover_after_noon <- turnover_over_date %>%
+  filter(hour < '18' & hour > '12') %>%
+  summarise(total = sum(turnover))
+
+turnover_evening <- turnover_over_date %>%
+  filter(hour < '24' & hour > '18') %>%
+  summarise(total = sum(turnover))
+
+turnover_morning
+turnover_after_noon
+turnover_evening
+
+#display the turnover for one day
+turnover_plot <- ggplot(turnover_over_date, aes(x = hour, y = turnover)) +
+  geom_col() +
+  scale_y_continuous(labels = function(x) format(x, scientific = FALSE)) +
+  labs(title = 'turnover over time by creditcard payment segment',
+       x = 'Date',
+       y = 'turnover')
+
+turnover_plot
 
 ```
 
+Interesting ! The turnover made between 20:00 and 21:00 is twice as much
+as the turnover made between 22:00 and 23:00 and peaks at **15000 €**.
+In the evening the computed turnover made in the evening is **102534 €**
+! Comparing to the afternoon it is 3 times bigger !
 
-Let's see now how these bikes are dispatched around the city. For such purpose we should display the list of bikes by descending order with number of bikes available. However this ranking will depend of peak hours. The more a station uner pressure the fewer bikes available. It consequently requires to timeframe days in 3 parts : morning (from 6:00 AM to 12:00AM), afternoon (from 12:01 AM to 6:00PM) and night (from 6:01 PM to 5:99 AM)
+# Conclusion
 
+This exploratory data analysis has led us to understand more indepth
+which are the rental trends in terms of trafic over the day, prefered
+rental methods by users and how bike availability can be impacted.
+Obviously all the variables did not have all been used. Here are some
+additional ideas for some exploratory analysis about citybikes.
 
-```{r}
-# sorting the station per available bikes 
+-   Seizing the number of stations in each Parisian disctrict and
+    computing the number of bikes in order to see which district is in
+    tension compared to the others
 
+-   Extend this analysis to scooters
 
-availability <- dbGetQuery(conn,'SELECT DISTINCT )
-
-```
-As you might know a lot of bikes are unavailable due to many reasons of dysfunctionment. However as you might have noticed the number of bikes available equals the number of mechanical and ebikes lastly reported in the station. But it does not mean that every bike is fully operational. 
-
-```{r}
-
-bike_plot
-
-```
-
-
-
-
-### Is subscription dominant over one time payment ? 
-```{r}
-# compute percentages over the mechanical bikes 
-
-
-```
+-   Predict the most recurring pathways traveled by users between bike
+    stations. This analysis will imply tracking bikes id with other
+    tools like instant tracking of scooters for example.
